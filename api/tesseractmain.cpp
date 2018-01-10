@@ -1,21 +1,21 @@
 /**********************************************************************
-* File:        tessedit.cpp  (Formerly tessedit.c)
-* Description: Main program for merge of tess and editor.
-* Author:                  Ray Smith
-* Created:                 Tue Jan 07 15:21:46 GMT 1992
-*
-* (C) Copyright 1992, Hewlett-Packard Ltd.
-** Licensed under the Apache License, Version 2.0 (the "License");
-** you may not use this file except in compliance with the License.
-** You may obtain a copy of the License at
-** http://www.apache.org/licenses/LICENSE-2.0
-** Unless required by applicable law or agreed to in writing, software
-** distributed under the License is distributed on an "AS IS" BASIS,
-** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-** See the License for the specific language governing permissions and
-** limitations under the License.
-*
-**********************************************************************/
+ * File:        tesseractmain.cpp  (Formerly tessedit.c)
+ * Description: Main program for merge of tess and editor.
+ * Author:                  Ray Smith
+ * Created:                 Tue Jan 07 15:21:46 GMT 1992
+ *
+ * (C) Copyright 1992, Hewlett-Packard Ltd.
+ ** Licensed under the Apache License, Version 2.0 (the "License");
+ ** you may not use this file except in compliance with the License.
+ ** You may obtain a copy of the License at
+ ** http://www.apache.org/licenses/LICENSE-2.0
+ ** Unless required by applicable law or agreed to in writing, software
+ ** distributed under the License is distributed on an "AS IS" BASIS,
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ ** See the License for the specific language governing permissions and
+ ** limitations under the License.
+ *
+ **********************************************************************/
 
 // Include automatically generated configuration file if running autoconf
 #ifdef HAVE_CONFIG_H
@@ -96,6 +96,9 @@ void PrintVersionInfo() {
     }
     }
 #endif
+    if (SIMDDetect::IsAVX512BWAvailable()) printf(" Found AVX512BW\n");
+    if (SIMDDetect::IsAVX512FAvailable()) printf(" Found AVX512F\n");
+    if (SIMDDetect::IsAVX2Available()) printf(" Found AVX2\n");
     if (SIMDDetect::IsAVXAvailable()) printf(" Found AVX\n");
     if (SIMDDetect::IsSSEAvailable()) printf(" Found SSE\n");
 }
@@ -235,6 +238,13 @@ void FixPageSegMode(tesseract::TessBaseAPI* api,
     api->SetPageSegMode(pagesegmode);
 }
 
+void checkArgValues (int arg, const char* mode, int count) {
+  if (arg >= count || arg < 0) {
+    printf("Invalid %s value, please enter a number between 0-%d", mode, count - 1);
+    exit(0); 
+  }
+}
+
 // NOTE: arg_i is used here to avoid ugly *i so many times in this function
 void ParseArgs(const int argc, char** argv, const char** lang,
                const char** image, const char** outputbase,
@@ -290,12 +300,15 @@ void ParseArgs(const int argc, char** argv, const char** lang,
     } else if (strcmp(argv[i], "-psm") == 0 && i + 1 < argc) {
       // The parameter -psm is deprecated and was replaced by --psm.
       // It is still supported for compatibility reasons.
+      checkArgValues(atoi(argv[i+1]), "PSM", tesseract::PSM_COUNT);
       *pagesegmode = static_cast<tesseract::PageSegMode>(atoi(argv[i + 1]));
       ++i;
     } else if (strcmp(argv[i], "--psm") == 0 && i + 1 < argc) {
+      checkArgValues(atoi(argv[i+1]), "PSM", tesseract::PSM_COUNT);
       *pagesegmode = static_cast<tesseract::PageSegMode>(atoi(argv[i + 1]));
       ++i;
     } else if (strcmp(argv[i], "--oem") == 0 && i + 1 < argc) {
+      checkArgValues(atoi(argv[i+1]), "OEM", tesseract::OEM_COUNT);
       *enginemode = static_cast<tesseract::OcrEngineMode>(atoi(argv[i + 1]));
       ++i;
     } else if (strcmp(argv[i], "--print-parameters") == 0) {
@@ -404,7 +417,7 @@ int main(int argc, char** argv) {
   static GenericVector<STRING> vars_vec;
   static GenericVector<STRING> vars_values;
 
-#ifdef NDEBUG
+#if !defined(DEBUG)
   // Disable debugging and informational messages from Leptonica.
   setMsgSeverity(L_SEVERITY_ERROR);
 #endif
@@ -431,23 +444,24 @@ int main(int argc, char** argv) {
   // first TessBaseAPI must be destructed, DawgCache must be the last object.
   tesseract::Dict::GlobalDawgCache();
 
-  // Avoid memory leak caused by auto variable when exit() is called.
+  // Avoid memory leak caused by auto variable when return is called.
   static tesseract::TessBaseAPI api;
 
   api.SetOutputName(outputbase);
 
   int init_failed = api.Init(datapath, lang, enginemode, &(argv[arg_i]),
                              argc - arg_i, &vars_vec, &vars_values, false);
-  if (init_failed) {
-    fprintf(stderr, "Could not initialize tesseract.\n");
-    return EXIT_FAILURE;
-  }
 
   SetVariablesFromCLArgs(&api, argc, argv);
 
   if (list_langs) {
     PrintLangsList(&api);
     return EXIT_SUCCESS;
+  }
+
+  if (init_failed) {
+    fprintf(stderr, "Could not initialize tesseract.\n");
+    return EXIT_FAILURE;
   }
 
   if (print_parameters) {
